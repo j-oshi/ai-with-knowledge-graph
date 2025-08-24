@@ -16,21 +16,26 @@ DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 def _normalize_edges(data: dict) -> dict:
     """
     Ensure all required fields exist in edges for Pydantic validation.
-    Injects 'fact': None if missing.
+    Injects 'fact': None if missing and replaces None IDs with 0.
     """
     if isinstance(data, dict) and "edges" in data:
         for edge in data["edges"]:
             if "fact" not in edge:
                 edge["fact"] = None
+            # 🔧 Fix: Ensure entity IDs are always integers
+            if edge.get("source_entity_id") is None:
+                edge["source_entity_id"] = 0
+            if edge.get("target_entity_id") is None:
+                edge["target_entity_id"] = 0
 
     if isinstance(data, dict) and "entity_resolutions" in data:
         for edge in data["entity_resolutions"]:
-            if  "duplicate_idx" in edge and "duplicates" not in edge:
+            if "duplicate_idx" in edge and "duplicates" not in edge:
                 edge["duplicates"] = []
 
-    print('--------------raw test ----------')
+    print("--------------normalized edges ----------")
     print(data)
-    print('---------------------------')
+    print("-----------------------------------------")
     return data
 
 
@@ -83,17 +88,18 @@ class OllamaClient(LLMClient):
         if response_model is not None:
             schema = response_model.model_json_schema()
 
-            print('----------print schema-----------')
+            print("----------print schema-----------")
             print(schema)
-            print('---------------------------------')
+            print("---------------------------------")
             prompt += (
                 "\n\n"
                 "You must respond ONLY with a valid JSON object that contains example data conforming to this schema:\n"
                 f"{json.dumps(schema, indent=2)}\n\n"
                 "⚠️ Do NOT return the schema itself. "
                 "Instead, return a JSON object with real values that satisfy the schema. "
-                "For example, include an `edges` array with objects that have `relation_type`, `source_entity_id`, `target_entity_id`, and `fact`. "
-                "If you cannot find data, return an empty `edges` array."
+                "Always include valid integers for `source_entity_id` and `target_entity_id`. "
+                "If you cannot determine an ID, return `0` instead of null. "
+                "If you cannot find any data, return an empty `edges` array."
             )
 
         model_name = self._get_model_for_size(model_size)
