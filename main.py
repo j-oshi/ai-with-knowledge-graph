@@ -26,14 +26,13 @@ logger = logging.getLogger(__name__)
 
 # Neo4j connection parameters
 # Make sure Neo4j Desktop is running with a local DBMS started
-NEO4j_URI = 'http://127.0.0.1:11434'
+NEO4j_URI = 'neo4j://127.0.0.1:7687'
 NEO4j_USER = 'neo4j'
 NEO4j_PASSWORD = 'password'
-AI_MODEL = "deepseek-r1:7b" # Set up from ollama.com
-EMBEDDING_MODEL = "nomic-embed-text"
+AI_MODEL = "deepseek-r1:8b" # Set up from ollama.com
+EMBEDDING_MODEL = "nomic-embed-text:latest"
 
 # Configure Ollama LLM client
-
 llm_config = LLMConfig(
     api_key="abc",  # Ollama doesn't require a real API key
     model=AI_MODEL,
