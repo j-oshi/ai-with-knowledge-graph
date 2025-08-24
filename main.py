@@ -9,9 +9,12 @@ from graphiti_core import Graphiti
 from graphiti_core.nodes import EpisodeType
 from graphiti_core.search.search_config_recipes import NODE_HYBRID_SEARCH_RRF
 from graphiti_core.llm_client.config import LLMConfig
-from graphiti_core.llm_client.openai_client import OpenAIClient
-from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
+# from graphiti_core.llm_client.openai_client import OpenAIClient
+# from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
 from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
+from graphiti_ollama_client.ollama_client import OllamaClient
+from graphiti_ollama_client.ollama_embedder import OllamaEmbedder, OllamaEmbedderConfig
+from graphiti_ollama_client.ollama_reranker_client import OllamaRerankerClient
 
 
 
@@ -31,16 +34,17 @@ NEO4j_USER = 'neo4j'
 NEO4j_PASSWORD = 'password'
 AI_MODEL = "deepseek-r1:8b" # Set up from ollama.com
 EMBEDDING_MODEL = "nomic-embed-text:latest"
+OLLAMA_BASE_URL = "http://localhost:11434"
 
 # Configure Ollama LLM client
 llm_config = LLMConfig(
     api_key="abc",  # Ollama doesn't require a real API key
     model=AI_MODEL,
     small_model=AI_MODEL,
-    base_url="http://localhost:11434/v1",  # Ollama provides this port
+    base_url=OLLAMA_BASE_URL,  # Ollama provides this port
 )
 
-llm_client = OpenAIClient(config=llm_config)
+llm_client = OllamaClient(config=llm_config)
 
 async def main():
     #################################################
@@ -57,15 +61,15 @@ async def main():
         NEO4j_USER,
         NEO4j_PASSWORD,
         llm_client=llm_client,
-        embedder=OpenAIEmbedder(
-            config=OpenAIEmbedderConfig(
+        embedder=OllamaEmbedder(
+            config=OllamaEmbedderConfig(
                 api_key="abc",
                 embedding_model=EMBEDDING_MODEL,
                 embedding_dim=768,
-                base_url="http://localhost:11434/v1",
+                base_url=OLLAMA_BASE_URL,
             )
         ),
-        cross_encoder=OpenAIRerankerClient(client=llm_client, config=llm_config),
+        cross_encoder=OllamaRerankerClient(client=llm_client, config=llm_config),
     )
 
     try:
