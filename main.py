@@ -4,19 +4,18 @@ import logging
 import os
 from datetime import datetime, timezone
 from logging import INFO
+from dotenv import load_dotenv
 
 from graphiti_core import Graphiti
 from graphiti_core.nodes import EpisodeType
 from graphiti_core.search.search_config_recipes import NODE_HYBRID_SEARCH_RRF
 from graphiti_core.llm_client.config import LLMConfig
-# from graphiti_core.llm_client.openai_client import OpenAIClient
-# from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
-from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
+
 from graphiti_ollama_client.ollama_client import OllamaClient
 from graphiti_ollama_client.ollama_embedder import OllamaEmbedder, OllamaEmbedderConfig
 from graphiti_ollama_client.ollama_reranker_client import OllamaRerankerClient
 
-
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -28,10 +27,11 @@ logger = logging.getLogger(__name__)
 
 
 # Neo4j connection parameters
-# Make sure Neo4j Desktop is running with a local DBMS started
 NEO4j_URI = 'neo4j://127.0.0.1:7687'
 NEO4j_USER = 'neo4j'
-NEO4j_PASSWORD = 'password'
+NEO4j_PASSWORD = os.getenv('NEO4j_PASSWORD')
+
+
 AI_MODEL = "deepseek-r1:8b" # Set up from ollama.com
 EMBEDDING_MODEL = "nomic-embed-text:latest"
 OLLAMA_BASE_URL = "http://localhost:11434"
@@ -245,4 +245,8 @@ async def main():
 
 
 if __name__ == '__main__':
+    start_time = datetime.now()
     asyncio.run(main())
+    end_time = datetime.now()
+    execution_time = end_time - start_time
+    print(f"\nTotal execution time: {execution_time:.2f} seconds.")
