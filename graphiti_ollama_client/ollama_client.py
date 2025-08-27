@@ -33,9 +33,9 @@ def _normalize_edges(data: dict) -> dict:
             if "duplicate_idx" in edge and "duplicates" not in edge:
                 edge["duplicates"] = []
 
-    print("--------------normalized edges ----------")
-    print(data)
-    print("-----------------------------------------")
+    # print("--------------normalized edges ----------")
+    # print(data)
+    # print("-----------------------------------------")
     return data
 
 
@@ -88,9 +88,9 @@ class OllamaClient(LLMClient):
         if response_model is not None:
             schema = response_model.model_json_schema()
 
-            print("----------print schema-----------")
-            print(schema)
-            print("---------------------------------")
+            # print("----------print schema-----------")
+            # print(schema)
+            # print("---------------------------------")
             prompt += (
                 "\n\n"
                 "You must respond ONLY with a valid JSON object that contains example data conforming to this schema:\n"
@@ -123,9 +123,9 @@ class OllamaClient(LLMClient):
             data = resp.json()
 
         raw = data.get("response", "")
-        print("--------------raw ollama response ----------")
-        print(raw)
-        print("--------------------------------------------")
+        # print("--------------raw ollama response ----------")
+        # print(raw)
+        # print("--------------------------------------------")
 
         try:
             parsed = json.loads(raw)
