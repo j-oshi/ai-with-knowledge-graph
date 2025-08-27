@@ -1,15 +1,17 @@
 import httpx
 import json
 import logging
+import typing
+from typing import ClassVar
 from typing import Any, Optional
 
-from graphiti_core.llm_client.client import LLMClient, DEFAULT_MAX_TOKENS
+from graphiti_core.llm_client.client import MULTILINGUAL_EXTRACTION_RESPONSES, LLMClient, DEFAULT_MAX_TOKENS
 from graphiti_core.llm_client.config import LLMConfig, ModelSize
 from graphiti_core.prompts.models import Message
 
+from pydantic import BaseModel
+
 logger = logging.getLogger(__name__)
-
-
 DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 
 
@@ -33,16 +35,51 @@ def _normalize_edges(data: dict) -> dict:
             if "duplicate_idx" in edge and "duplicates" not in edge:
                 edge["duplicates"] = []
 
-    # print("--------------normalized edges ----------")
-    # print(data)
-    # print("-----------------------------------------")
     return data
 
+def _normalize_llm_output(parsed: dict, response_model: Optional[type[BaseModel]]) -> dict:
+    """
+    Normalize Ollama JSON response to ensure required keys exist
+    and maintain consistency across ExtractedEntities / Edges / Resolutions.
+    """
+    if not isinstance(parsed, dict):
+        return {}
+
+    # --- Always enforce required keys by schema ---
+    if response_model:
+        if response_model.__name__ == "ExtractedEdges":
+            parsed.setdefault("edges", [])
+        elif response_model.__name__ == "ExtractedEntities":
+            parsed.setdefault("extracted_entities", [])
+
+    # --- Ensure entity_resolutions consistency ---
+    resolutions = parsed.get("entity_resolutions", [])
+    extracted_entities = parsed.get("extracted_entities", [])
+
+    if resolutions and not extracted_entities:
+        # Auto-create stub entities to match resolutions
+        for res in resolutions:
+            stub = {
+                "name": res.get("name", f"Entity_{res.get('id', len(extracted_entities))}"),
+                "entity_type_id": 0  # default fallback
+            }
+            extracted_entities.append(stub)
+        parsed["extracted_entities"] = extracted_entities
+
+    # Clamp invalid resolution IDs
+    for res in resolutions:
+        if isinstance(res.get("id"), int) and res["id"] >= len(parsed["extracted_entities"]):
+            res["id"] = max(0, len(parsed["extracted_entities"]) - 1)
+
+    return parsed
 
 class OllamaClient(LLMClient):
     """
     Minimal Ollama client compatible with Graphiti's LLMClient interface.
     """
+
+    # Class-level constants
+    MAX_RETRIES: ClassVar[int] = 2
 
     def __init__(
         self,
@@ -58,11 +95,11 @@ class OllamaClient(LLMClient):
 
     def _generation_url(self) -> str:
         base = (self.config.base_url or DEFAULT_OLLAMA_BASE_URL).rstrip("/")
-        if base.endswith("/api/generate"):
+        if base.endswith("/api/chat"):
             return base
         if base.endswith("/api"):
-            return f"{base}/generate"
-        return f"{base}/api/generate"
+            return f"{base}/chat"
+        return f"{base}/api/chat"
 
     def _get_model_for_size(self, model_size: ModelSize) -> str:
         if model_size == ModelSize.small and self.small_model:
@@ -83,31 +120,37 @@ class OllamaClient(LLMClient):
         max_tokens: int = DEFAULT_MAX_TOKENS,
         model_size: ModelSize = ModelSize.medium,
     ) -> dict[str, Any]:
-        prompt = self._flatten_messages(messages)
+        ollama_messages = []
 
-        if response_model is not None:
-            schema = response_model.model_json_schema()
+        for m in messages:
+            m.content = self._clean_input(m.content)
+            if m.role == 'user':
+                ollama_messages.append({'role': 'user', 'content': m.content})
+            elif m.role == 'system':                
+                if response_model is not None:
+                    schema = response_model.model_json_schema()
+                    m.content += (
+                        "You must respond ONLY with a valid JSON object INSTANCE that conforms to this schema:\n\n"
+                        f"{json.dumps(schema, indent=2)}\n\n"
+                        "⚠️ IMPORTANT RULES:\n"
+                        "1. Do NOT return the schema itself.\n"
+                        "2. Do NOT include '$defs', 'properties', or 'title'.\n"
+                        "3. Instead, return a JSON object populated with example values.\n"
+                        "4. Always include the required fields:\n"
+                        "   - For ExtractedEdges: return {\"edges\": [ ... ]}\n"
+                        "   - For ExtractedEntities: return {\"extracted_entities\": [ ... ]}\n"
+                        "5. If there are no values, return an empty array for the required key.\n"
+                    )
+                ollama_messages.append({'role': 'system', 'content': m.content})
 
-            # print("----------print schema-----------")
-            # print(schema)
-            # print("---------------------------------")
-            prompt += (
-                "\n\n"
-                "You must respond ONLY with a valid JSON object that contains example data conforming to this schema:\n"
-                f"{json.dumps(schema, indent=2)}\n\n"
-                "⚠️ Do NOT return the schema itself. "
-                "Instead, return a JSON object with real values that satisfy the schema. "
-                "Always include valid integers for `source_entity_id` and `target_entity_id`. "
-                "If you cannot determine an ID, return `0` instead of null. "
-                "If you cannot find any data, return an empty `edges` array."
-            )
+        # prompt = self._flatten_messages(messages)
 
         model_name = self._get_model_for_size(model_size)
         url = self._generation_url()
 
         payload = {
             "model": model_name,
-            "prompt": prompt,
+            "messages": ollama_messages,
             "stream": False,
             "format": "json",   # Ollama formats output as JSON
             "options": {
@@ -122,13 +165,10 @@ class OllamaClient(LLMClient):
             resp.raise_for_status()
             data = resp.json()
 
-        raw = data.get("response", "")
-        # print("--------------raw ollama response ----------")
-        # print(raw)
-        # print("--------------------------------------------")
+        raw = data.get("message", {}).get("content", "")
 
         try:
-            parsed = json.loads(raw)
+            parsed = json.loads(raw) if raw.strip() else {}
         except json.JSONDecodeError:
             start = raw.find("{")
             end = raw.rfind("}")
@@ -138,5 +178,66 @@ class OllamaClient(LLMClient):
             else:
                 raise json.JSONDecodeError("Response was not valid JSON", raw, 0)
 
-        # Normalize before returning to avoid Pydantic validation errors
-        return _normalize_edges(parsed)
+        # Normalize for required keys
+        parsed = _normalize_edges(parsed)
+        # parsed = _normalize_llm_output(parsed, response_model)
+
+        return parsed
+
+    async def generate_response(
+        self,
+        messages: list[Message],
+        response_model: type[BaseModel] | None = None,
+        max_tokens: int | None = None,
+        model_size: ModelSize = ModelSize.medium,
+    ) -> dict[str, typing.Any]:
+        if max_tokens is None:
+            max_tokens = self.max_tokens
+
+        retry_count = 0
+        last_error = None
+
+        if response_model is not None:
+            serialized_model = json.dumps(response_model.model_json_schema())
+            messages[
+                -1
+            ].content += (
+                f'\n\nRespond with a JSON object in the following format:\n\n{serialized_model}'
+            )
+
+        # Add multilingual extraction instructions
+        messages[0].content += MULTILINGUAL_EXTRACTION_RESPONSES
+
+        while retry_count <= self.MAX_RETRIES:
+            try:
+                response = await self._generate_response(
+                    messages, response_model, max_tokens=max_tokens, model_size=model_size
+                )
+                return response
+            except Exception as e:
+                last_error = e
+
+                # Don't retry if we've hit the max retries
+                if retry_count >= self.MAX_RETRIES:
+                    logger.error(f'Max retries ({self.MAX_RETRIES}) exceeded. Last error: {e}')
+                    raise
+
+                retry_count += 1
+
+                # Construct a detailed error message for the LLM
+                error_context = (
+                    f'The previous response attempt was invalid. '
+                    f'Error type: {e.__class__.__name__}. '
+                    f'Error details: {str(e)}. '
+                    f'Please try again with a valid response, ensuring the output matches '
+                    f'the expected format and constraints.'
+                )
+
+                error_message = Message(role='user', content=error_context)
+                messages.append(error_message)
+                logger.warning(
+                    f'Retrying after application error (attempt {retry_count}/{self.MAX_RETRIES}): {e}'
+                )
+
+        # If we somehow get here, raise the last error
+        raise last_error or Exception('Max retries exceeded with no specific error')
