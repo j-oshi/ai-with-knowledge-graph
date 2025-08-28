@@ -1,253 +1,132 @@
-import asyncio
-import json
-import logging
-import os
-from datetime import datetime, timezone
-from logging import INFO
 from dotenv import load_dotenv
-
 from graphiti_core import Graphiti
-from graphiti_core.nodes import EpisodeType
-from graphiti_core.search.search_config_recipes import NODE_HYBRID_SEARCH_RRF
 from graphiti_core.llm_client.config import LLMConfig
-
 from graphiti_ollama_client.ollama_client import OllamaClient
 from graphiti_ollama_client.ollama_embedder import OllamaEmbedder, OllamaEmbedderConfig
 from graphiti_ollama_client.ollama_reranker_client import OllamaRerankerClient
 
+from ollama import chat
+import os
+import asyncio
+from typing import List, Optional
+from dataclasses import dataclass
+from helper import check_if_model_exist
+
 load_dotenv()
-
-# Configure logging
-logging.basicConfig(
-    level=INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-)
-logger = logging.getLogger(__name__)
-
-
-# Neo4j connection parameters
-NEO4j_URI = 'neo4j://127.0.0.1:7687'
-NEO4j_USER = 'neo4j'
-NEO4j_PASSWORD = os.getenv('NEO4j_PASSWORD')
-
 
 AI_MODEL = "qwen2.5vl:7b" # Set up from ollama.com
 EMBEDDING_MODEL = "nomic-embed-text:latest"
 OLLAMA_BASE_URL = "http://localhost:11434"
 
+# Neo4j connection details
+NEO4j_URI = 'neo4j://127.0.0.1:7687'
+NEO4j_USER = 'neo4j'
+NEO4j_PASSWORD = os.getenv('NEO4j_PASSWORD')
+
 # Configure Ollama LLM client
 llm_config = LLMConfig(
-    api_key="abc",  # Ollama doesn't require a real API key
+    api_key="abc",  
     model=AI_MODEL,
     small_model=AI_MODEL,
-    base_url=OLLAMA_BASE_URL,  # Ollama provides this port
+    base_url=OLLAMA_BASE_URL,
 )
 
 llm_client = OllamaClient(config=llm_config)
 
-async def main():
-    #################################################
-    # INITIALIZATION
-    #################################################
-    # Connect to Neo4j and set up Graphiti indices
-    # This is required before using other Graphiti
-    # functionality
-    #################################################
+# Ollama model
+AI_MODEL = "qwen2.5vl:7b"
+print(check_if_model_exist(AI_MODEL))
 
-    # Initialize Graphiti with Neo4j connection
-    graphiti = Graphiti(
-        NEO4j_URI,
-        NEO4j_USER,
-        NEO4j_PASSWORD,
-        llm_client=llm_client,
-        embedder=OllamaEmbedder(
-            config=OllamaEmbedderConfig(
-                api_key="abc",
-                embedding_model=EMBEDDING_MODEL,
-                embedding_dim=768,
-                base_url=OLLAMA_BASE_URL,
-            )
-        ),
-        cross_encoder=OllamaRerankerClient(client=llm_client, config=llm_config),
-    )
+# Initialize Graphiti with Neo4j connection
+graphiti = Graphiti(
+    NEO4j_URI,
+    NEO4j_USER,
+    NEO4j_PASSWORD,
+    llm_client=llm_client,
+    embedder=OllamaEmbedder(
+        config=OllamaEmbedderConfig(
+            api_key="abc",
+            embedding_model=EMBEDDING_MODEL,
+            embedding_dim=768,
+            base_url=OLLAMA_BASE_URL,
+        )
+    ),
+    cross_encoder=OllamaRerankerClient(client=llm_client, config=llm_config),
+)
 
+# ---------------- Search result wrapper ----------------
+@dataclass
+class GraphitiSearchResult:
+    uuid: str
+    fact: str
+    source_node_uuid: Optional[str] = None
+    valid_at: Optional[str] = None
+    invalid_at: Optional[str] = None
+
+# ---------------- Graphiti search tool ----------------
+async def search_graphiti(query: str) -> List[GraphitiSearchResult]:
+    """Search Graphiti knowledge graph for relevant facts."""
     try:
-        # Initialize the graph database with graphiti's indices. This only needs to be done once.
-        await graphiti.build_indices_and_constraints()
-
-        #################################################
-        # ADDING EPISODES
-        #################################################
-        # Episodes are the primary units of information
-        # in Graphiti. They can be text or structured JSON
-        # and are automatically processed to extract entities
-        # and relationships.
-        #################################################
-
-        # Example: Add Episodes
-        # Episodes list containing both text and JSON episodes
-        episodes = [
-            {
-                'content': 'Kamala Harris is the Attorney General of California. She was previously '
-                'the district attorney for San Francisco.',
-                'type': EpisodeType.text,
-                'description': 'podcast transcript',
-            },
-            {
-                'content': 'As AG, Harris was in office from January 3, 2011 - January 3, 2017',
-                'type': EpisodeType.text,
-                'description': 'podcast transcript',
-            },
-            {
-                'content': {
-                    'name': 'Gavin Newsom',
-                    'position': 'Governor',
-                    'state': 'California',
-                    'previous_role': 'Lieutenant Governor',
-                    'previous_location': 'San Francisco',
-                },
-                'type': EpisodeType.json,
-                'description': 'podcast metadata',
-            },
-            {
-                'content': {
-                    'name': 'Gavin Newsom',
-                    'position': 'Governor',
-                    'term_start': 'January 7, 2019',
-                    'term_end': 'Present',
-                },
-                'type': EpisodeType.json,
-                'description': 'podcast metadata',
-            },
-        ]
-
-        # Add episodes to the graph
-        for i, episode in enumerate(episodes):
-            await graphiti.add_episode(
-                name=f'Freakonomics Radio {i}',
-                episode_body=episode['content']
-                if isinstance(episode['content'], str)
-                else json.dumps(episode['content']),
-                source=episode['type'],
-                source_description=episode['description'],
-                reference_time=datetime.now(timezone.utc),
-            )
-            print(f'Added episode: Freakonomics Radio {i} ({episode["type"].value})')
-
-        #################################################
-        # BASIC SEARCH
-        #################################################
-        # The simplest way to retrieve relationships (edges)
-        # from Graphiti is using the search method, which
-        # performs a hybrid search combining semantic
-        # similarity and BM25 text retrieval.
-        #################################################
-
-        # Perform a hybrid search combining semantic similarity and BM25 retrieval
-        print("\nSearching for: 'Who was the California Attorney General?'")
-        # results = await graphiti.search('Who was the California Attorney General?')
-        results = await graphiti.search('Who is the governor of California?')
-
-        # Print search results
-        print('\nSearch Results:')
+        results = await graphiti.search(query)
+        formatted_results = []
         for result in results:
-            print(f'UUID: {result.uuid}')
-            print(f'Fact: {result.fact}')
-            if hasattr(result, 'valid_at') and result.valid_at:
-                print(f'Valid from: {result.valid_at}')
-            if hasattr(result, 'invalid_at') and result.invalid_at:
-                print(f'Valid until: {result.invalid_at}')
-            print('---')
-
-        #################################################
-        # CENTER NODE SEARCH
-        #################################################
-        # For more contextually relevant results, you can
-        # use a center node to rerank search results based
-        # on their graph distance to a specific node
-        #################################################
-
-        # Use the top search result's UUID as the center node for reranking
-        if results and len(results) > 0:
-            # Get the source node UUID from the top result
-            center_node_uuid = results[0].source_node_uuid
-
-            print('\nReranking search results based on graph distance:')
-            print(f'Using center node UUID: {center_node_uuid}')
-
-            reranked_results = await graphiti.search(
-                'Who was the California Attorney General?', center_node_uuid=center_node_uuid
+            formatted_results.append(
+                GraphitiSearchResult(
+                    uuid=result.uuid,
+                    fact=result.fact,
+                    source_node_uuid=getattr(result, 'source_node_uuid', None),
+                    valid_at=str(result.valid_at) if getattr(result, 'valid_at', None) else None,
+                    invalid_at=str(result.invalid_at) if getattr(result, 'invalid_at', None) else None,
+                )
             )
+        print('test test')
+        print(formatted_results)
+        return formatted_results
+    except Exception as e:
+        print(f"Error searching Graphiti: {e}")
+        raise
 
-            # Print reranked search results
-            print('\nReranked Search Results:')
-            for result in reranked_results:
-                print(f'UUID: {result.uuid}')
-                print(f'Fact: {result.fact}')
-                if hasattr(result, 'valid_at') and result.valid_at:
-                    print(f'Valid from: {result.valid_at}')
-                if hasattr(result, 'invalid_at') and result.invalid_at:
-                    print(f'Valid until: {result.invalid_at}')
-                print('---')
-        else:
-            print('No results found in the initial search to use as center node.')
+# ---------------- System prompt ----------------
+system_prompt = """You have access to a knowledge graph containing information about large language models (LLMs), including temporal data.
+When answering user questions, call the `search_graphiti` tool if you need factual information.
+If no relevant information is found, say you don’t know rather than inventing an answer."""
 
-        #################################################
-        # NODE SEARCH USING SEARCH RECIPES
-        #################################################
-        # Graphiti provides predefined search recipes
-        # optimized for different search scenarios.
-        # Here we use NODE_HYBRID_SEARCH_RRF for retrieving
-        # nodes directly instead of edges.
-        #################################################
+# ---------------- Ollama chat wrapper ----------------
+async def ollama_chat(question: str):
+    search_results = await search_graphiti(question)
 
-        # Example: Perform a node search using _search method with standard recipes
-        print(
-            '\nPerforming node search using _search method with standard recipe NODE_HYBRID_SEARCH_RRF:'
+    # Convert results into context for Ollama
+    context_facts = "\n".join([f"- {r.fact} (valid: {r.valid_at}, invalid: {r.invalid_at})"
+                               for r in search_results]) or "No results found in Graphiti."
+
+    # Ollama’s chat is sync → run in thread executor to avoid blocking
+    loop = asyncio.get_running_loop()
+    response = await loop.run_in_executor(
+        None,
+        lambda: chat(
+            model=AI_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": question},
+                {"role": "assistant", "content": f"Graphiti search results:\n{context_facts}"}
+            ]
         )
+    )
+    return response["message"]["content"]
 
-        # Use a predefined search configuration recipe and modify its limit
-        node_search_config = NODE_HYBRID_SEARCH_RRF.model_copy(deep=True)
-        node_search_config.limit = 5  # Limit to 5 results
+async def main():
+    print("Graphiti-Ollama Agent. Type 'exit' to quit.")
+    while True:
+        user_query = input("\n[You] ")
+        if user_query.lower() in ["exit", "quit"]:
+            break
 
-        # Execute the node search
-        node_search_results = await graphiti._search(
-            query='California Governor',
-            config=node_search_config,
-        )
+        try:
+            answer = await ollama_chat(user_query)
+            print(f"\n[Assistant] {answer}")
+        except Exception as e:
+            print(f"[Error] {e}")
 
-        # Print node search results
-        print('\nNode Search Results:')
-        for node in node_search_results.nodes:
-            print(f'Node UUID: {node.uuid}')
-            print(f'Node Name: {node.name}')
-            node_summary = node.summary[:100] + '...' if len(node.summary) > 100 else node.summary
-            print(f'Content Summary: {node_summary}')
-            print(f'Node Labels: {", ".join(node.labels)}')
-            print(f'Created At: {node.created_at}')
-            if hasattr(node, 'attributes') and node.attributes:
-                print('Attributes:')
-                for key, value in node.attributes.items():
-                    print(f'  {key}: {value}')
-            print('---')
-
-    finally:
-        #################################################
-        # CLEANUP
-        #################################################
-        # Always close the connection to Neo4j when
-        # finished to properly release resources
-        #################################################
-
-        # Close the connection
-        await graphiti.close()
-        print('\nConnection closed')
-
-
-if __name__ == '__main__':
-    start_time = datetime.now()
+if __name__ == "__main__":
     asyncio.run(main())
-    end_time = datetime.now()
-    execution_time = end_time - start_time
-    print(f"\nTotal execution time: {execution_time.seconds} seconds or {execution_time.microseconds} seconds.")
+
