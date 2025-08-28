@@ -63,7 +63,6 @@ async def main():
         llm_client=llm_client,
         embedder=OllamaEmbedder(
             config=OllamaEmbedderConfig(
-                api_key="abc",
                 embedding_model=EMBEDDING_MODEL,
                 embedding_dim=768,
                 base_url=OLLAMA_BASE_URL,

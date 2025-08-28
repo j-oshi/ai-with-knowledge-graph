@@ -9,7 +9,7 @@ DEFAULT_EMBEDDING_MODEL = "nomic-embed-text"
 
 class OllamaEmbedderConfig(EmbedderConfig):
     embedding_model: str = DEFAULT_EMBEDDING_MODEL
-    base_url: str = "http://127.0.0.1:11434"  # default Ollama server
+    base_url: str = "http://127.0.0.1:11434"  
     timeout: int = 240
 
 

@@ -45,9 +45,8 @@ graphiti = Graphiti(
     llm_client=llm_client,
     embedder=OllamaEmbedder(
         config=OllamaEmbedderConfig(
-            api_key="abc",
             embedding_model=EMBEDDING_MODEL,
-            embedding_dim=768,
+            embedding_dim=1024,
             base_url=OLLAMA_BASE_URL,
         )
     ),
@@ -89,7 +88,7 @@ async def search_graphiti(query: str) -> List[GraphitiSearchResult]:
 # ---------------- System prompt ----------------
 system_prompt = """You have access to a knowledge graph containing information about large language models (LLMs), including temporal data.
 When answering user questions, call the `search_graphiti` tool if you need factual information.
-If no relevant information is found, say you don’t know rather than inventing an answer."""
+If no relevant information is found, say you don not know rather than inventing an answer."""
 
 # ---------------- Ollama chat wrapper ----------------
 async def ollama_chat(question: str):
