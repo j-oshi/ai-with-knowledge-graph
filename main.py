@@ -35,7 +35,6 @@ llm_client = OllamaClient(config=llm_config)
 
 # Ollama model
 AI_MODEL = "qwen2.5vl:7b"
-print(check_if_model_exist(AI_MODEL))
 
 # Initialize Graphiti with Neo4j connection
 graphiti = Graphiti(
@@ -112,7 +111,10 @@ async def ollama_chat(question: str):
     return response["message"]["content"]
 
 async def main():
-    print("Graphiti-Ollama Agent. Type wither 'exit' or 'quit' to terminate running task.")
+    if check_if_model_exist(AI_MODEL) != True:
+        return
+    
+    print("Graphiti-Ollama Agent. Type either 'exit' or 'quit' to terminate running task.")
     while True:
         try:
             user_query = input("\n[You] ")
