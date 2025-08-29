@@ -1,15 +1,15 @@
+import os
+import asyncio
+from typing import List, Optional
+from dataclasses import dataclass
 from dotenv import load_dotenv
 from graphiti_core import Graphiti
 from graphiti_core.llm_client.config import LLMConfig
 from graphiti_ollama_client.ollama_client import OllamaClient
 from graphiti_ollama_client.ollama_embedder import OllamaEmbedder, OllamaEmbedderConfig
 from graphiti_ollama_client.ollama_reranker_client import OllamaRerankerClient
-
 from ollama import chat
-import os
-import asyncio
-from typing import List, Optional
-from dataclasses import dataclass
+from colorama import Fore, Style
 from helper import check_if_model_exist
 
 load_dotenv()
@@ -86,9 +86,7 @@ async def search_graphiti(query: str) -> List[GraphitiSearchResult]:
         raise
 
 # ---------------- System prompt ----------------
-system_prompt = """You have access to a knowledge graph containing information about large language models (LLMs), including temporal data.
-When answering user questions, call the `search_graphiti` tool if you need factual information.
-If no relevant information is found, say you don not know rather than inventing an answer."""
+system_prompt = """You are an AI assistant with access to a rich knowledge graph about large language models (LLMs). The information from this graph is provided to you in a "Graphiti search results" section. Your primary responsibility is to synthesize these facts to answer the user's question accurately. If the search results do not contain the necessary information to form a complete answer, you must explicitly state that you don't know. Do not hallucinate or invent information."""
 
 # ---------------- Ollama chat wrapper ----------------
 async def ollama_chat(question: str):
@@ -114,18 +112,26 @@ async def ollama_chat(question: str):
     return response["message"]["content"]
 
 async def main():
-    print("Graphiti-Ollama Agent. Type 'exit' to quit.")
+    print("Graphiti-Ollama Agent. Type wither 'exit' or 'quit' to terminate running task.")
     while True:
-        user_query = input("\n[You] ")
-        if user_query.lower() in ["exit", "quit"]:
-            break
-
         try:
+            user_query = input("\n[You] ")
+            if user_query.lower() in ["exit", "quit"]:
+                break
             answer = await ollama_chat(user_query)
-            print(f"\n[Assistant] {answer}")
+            print(Fore.BLUE + f"\n[Assistant] {answer}")
+            print(Style.RESET_ALL)
+        except KeyboardInterrupt:
+            print("\nTask terminated by user.")
+            break
+        except EOFError:
+            print("\nNo input.")
+            break
         except Exception as e:
             print(f"[Error] {e}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
-
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nProgram interrupted from the main thread.")
