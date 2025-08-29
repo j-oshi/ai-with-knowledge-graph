@@ -112,6 +112,8 @@ async def ollama_chat(question: str):
 
 async def main():
     if check_if_model_exist(AI_MODEL) != True:
+        print(Fore.RED + f"{AI_MODEL} is not installed.")
+        print(Style.RESET_ALL)
         return
     
     print("Graphiti-Ollama Agent. Type either 'exit' or 'quit' to terminate running task.")
@@ -124,10 +126,12 @@ async def main():
             print(Fore.BLUE + f"\n[Assistant] {answer}")
             print(Style.RESET_ALL)
         except KeyboardInterrupt:
-            print("\nTask terminated by user.")
+            print(Fore.RED + "\nTask terminated by user.")
+            print(Style.RESET_ALL)
             break
         except EOFError:
-            print("\nNo input.")
+            print(Fore.RED + "\nNo input.")
+            print(Style.RESET_ALL)
             break
         except Exception as e:
             print(f"[Error] {e}")
@@ -136,4 +140,5 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\nProgram interrupted from the main thread.")
+        print(Fore.RED + "\nProgram interrupted from the main thread.")
+        print(Style.RESET_ALL)
