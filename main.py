@@ -10,7 +10,7 @@ from graphiti_ollama_client.ollama_embedder import OllamaEmbedder, OllamaEmbedde
 from graphiti_ollama_client.ollama_reranker_client import OllamaRerankerClient
 from ollama import chat
 from colorama import Fore, Style
-from helper import check_if_model_exist
+from utils.ollama_utils import check_if_model_exist
 
 load_dotenv()
 
