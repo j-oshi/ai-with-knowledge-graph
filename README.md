@@ -72,3 +72,10 @@ Once all the dependencies are installed, you can run your `main.py` script.
 ```bash
 python main.py
 ```
+
+### View file structure
+
+```bash
+tree /A /F > structure.txt
+python main.py
+```

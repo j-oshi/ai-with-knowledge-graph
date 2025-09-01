@@ -1,65 +1,21 @@
-import ollama
+import os
+import asyncio
 from ollama import chat
 from dotenv import load_dotenv
-import asyncio
-import os
-import psycopg2
-import numpy as np
-from psycopg2.extras import execute_values
-from pgvector.psycopg2 import register_vector
+
 from colorama import Fore, Style
 from utils.ollama_utils import check_if_model_exist
+from utils.decorators import timer_decorator
+from db_connector import get_top_k_similar_docs, check_db_connection
+from ingestion.vector import get_embedding_ollama
 
 load_dotenv()
-AI_MODEL = "qwen2.5vl:7b" 
+
+AI_MODEL = os.getenv('AI_MODEL')
 POSTGRES_PASSWORD = os.getenv('POSTGRES_PASSWORD')
 POSTGRES_PORT = os.getenv('POSTGRES_PORT')
 EMBEDDING_MODEL = "nomic-embed-text:latest"
 
-def get_embedding_ollama(text: str, model: str = EMBEDDING_MODEL):
-    """
-    Generates a vector embedding for the given text using Ollama.
-    """
-    try:
-        response = ollama.embeddings(model=model, prompt=text)
-        return response["embedding"]
-    except Exception as e:
-        print(f"Error getting embedding from Ollama: {e}")
-        return None
-
-def get_top_k_similar_docs(query_embedding: list, k: int = 3) -> list:
-    """
-    Connects to the database and retrieves the top-k most similar documents.
-    """
-    if not query_embedding:
-        return []
-
-    conn = None
-    try:
-        conn = psycopg2.connect(
-            host="localhost",
-            port=POSTGRES_PORT,
-            dbname="postgres",
-            user="postgres",
-            password=POSTGRES_PASSWORD
-        )
-        # Register pgvector extension once per connection
-        register_vector(conn)
-        cur = conn.cursor()
-
-        embedding_array = np.array(query_embedding)
-
-        # Get the top k most similar documents using the KNN <=> operator
-        cur.execute("SELECT text_column FROM embeddings_table ORDER BY embedding_column <=> %s LIMIT %s", (embedding_array, k))
-        top_docs = cur.fetchall()
-        
-        return [doc[0] for doc in top_docs]
-    except psycopg2.Error as e:
-        print(f"Database error occurred: {e}")
-        return []
-    finally:
-        if conn:
-            conn.close()
 
 def get_completion_from_messages(messages: list, model: str = AI_MODEL, temperature: float = 0, max_tokens: int = 1000):
     """
@@ -76,7 +32,7 @@ def get_completion_from_messages(messages: list, model: str = AI_MODEL, temperat
         print(f"Error getting completion from Ollama: {e}")
         return "An error occurred while getting the model response."
 
-
+@timer_decorator
 async def process_input_with_retrieval(user_input: str) -> str:
     """
     Processes the user's input by retrieving relevant documents and generating a response.
@@ -115,6 +71,9 @@ async def process_input_with_retrieval(user_input: str) -> str:
 
 async def main():
     if not check_if_model_exist(AI_MODEL):
+        return
+    
+    if check_db_connection() == False:
         return
     
     print("Ollama Agent. Type 'exit' or 'quit' to terminate running task.")

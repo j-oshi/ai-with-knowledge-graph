@@ -1,4 +1,7 @@
+import os
 import ollama
+
+EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL')
 
 def chunk_text(text, doc_name, chunk_size=500, overlap=100):
     """
@@ -33,7 +36,7 @@ def chunk_text(text, doc_name, chunk_size=500, overlap=100):
         })
     return chunks
 
-def get_embedding_ollama(text, model="nomic-embed-text:latest"):
+def get_embedding_ollama(text: str, model: str=EMBEDDING_MODEL):
     """
     Generates a vector embedding for a given text using an Ollama-hosted model.
 
@@ -52,5 +55,9 @@ def get_embedding_ollama(text, model="nomic-embed-text:latest"):
         requests.exceptions.RequestException: If there is an issue connecting to the Ollama server.
         KeyError: If the 'embedding' key is not present in the Ollama response.
     """
-    response = ollama.embeddings(model=model, prompt=text)
-    return response["embedding"]
+    try:
+        response = ollama.embeddings(model=model, prompt=text)
+        return response["embedding"]
+    except Exception as e:
+        print(f"Error getting embedding from Ollama: {e}")
+        return None

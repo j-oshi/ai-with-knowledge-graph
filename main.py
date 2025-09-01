@@ -12,6 +12,8 @@ from ollama import chat
 from colorama import Fore, Style
 from utils.ollama_utils import check_if_model_exist
 
+# from db_connector import insert_embeddings_to_db
+
 load_dotenv()
 
 AI_MODEL = "qwen2.5vl:7b" # Set up from ollama.com
