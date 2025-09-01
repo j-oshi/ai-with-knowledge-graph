@@ -9,7 +9,7 @@ import pgvector
 import math
 
 
-SITE_NAME = "https://akilibookkeeping.com/"
+SITE_NAME = "https://portfolio.oshinit.com/"
 if __name__ == "__main__":
     chunks = []
     site_content = get_site_content(SITE_NAME)
