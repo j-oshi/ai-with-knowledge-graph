@@ -57,11 +57,11 @@ def insert_embeddings_to_db(data, table_name="embeddings_table"):
         cursor = conn.cursor()
 
         sql = f"""
-        INSERT INTO {table_name} (text_column, doc_name_column, embedding_column)
+        INSERT INTO {table_name} (text_column, doc_name_column, doc_index_column, embedding_column)
         VALUES %s
         """
         
-        values = [(row['text'], row['metadata_']['doc'], row['embedding']) for row in data]
+        values = [(row['text'], row['metadata_']['doc'], row['metadata_']['index'], row['embedding']) for row in data]
         
         # Use execute_values for bulk insertion
         execute_values(cursor, sql, values)

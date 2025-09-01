@@ -79,3 +79,15 @@ python main.py
 tree /A /F > structure.txt
 python main.py
 ```
+
+### Create Table in postgress
+Run query to create table in postgres
+```bash
+CREATE TABLE embeddings_table (
+    id SERIAL PRIMARY KEY,
+    text_column TEXT,
+    doc_name_column VARCHAR(255),
+    doc_index_column INTEGER, 
+    embedding_column VECTOR(768)
+);
+```

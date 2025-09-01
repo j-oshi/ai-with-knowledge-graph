@@ -18,7 +18,7 @@ def get_document_filenames(allowed_extensions=None):
         list: A list of files name in folder. Returns an empty list if the folder
               does not exist or is empty.
     """
-    folder_path = 'documents'
+    folder_path = 'data/documents'
     filenames = []
 
     try:
