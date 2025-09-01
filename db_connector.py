@@ -92,7 +92,7 @@ def get_top_k_similar_docs(query_embedding: list, k: int = 3) -> list:
     try:
         conn = connect_pg()
         # Register pgvector extension once per connection
-        register_vector()
+        register_vector(conn)
         cur = conn.cursor()
 
         embedding_array = np.array(query_embedding)

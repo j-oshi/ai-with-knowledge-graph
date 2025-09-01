@@ -1,8 +1,8 @@
 import os
 import asyncio
-from ollama import chat
+from typing import List, Dict, Any
 from dotenv import load_dotenv
-
+from ollama import chat
 from colorama import Fore, Style
 from utils.ollama_utils import check_if_model_exist
 from utils.decorators import timer_decorator
@@ -16,10 +16,9 @@ POSTGRES_PASSWORD = os.getenv('POSTGRES_PASSWORD')
 POSTGRES_PORT = os.getenv('POSTGRES_PORT')
 EMBEDDING_MODEL = "nomic-embed-text:latest"
 
-
-def get_completion_from_messages(messages: list, model: str = AI_MODEL, temperature: float = 0, max_tokens: int = 1000):
+def get_completion_from_messages(messages: List[Dict[str, Any]], model: str = AI_MODEL, temperature: float = 0, max_tokens: int = 1000) -> str:
     """
-    Calls the Ollama chat model to get a response.
+    Calls the Ollama chat model to get a response and prints token usage.
     """
     try:
         response = chat(
@@ -27,7 +26,28 @@ def get_completion_from_messages(messages: list, model: str = AI_MODEL, temperat
             messages=messages,
             options={"temperature": temperature, "num_predict": max_tokens},
         )
+        
+        # Extract and print token counts
+        prompt_tokens = response.get('prompt_eval_count')
+        completion_tokens = response.get('eval_count')
+
+        if prompt_tokens is not None:
+            print(f"Number of input (prompt) tokens: {prompt_tokens}")
+        if completion_tokens is not None:
+            print(f"Number of output (completion) tokens: {completion_tokens}")
+
+        # The 'total_duration' and 'eval_duration' can also be useful
+        total_duration = response.get('total_duration')
+        eval_duration = response.get('eval_duration')
+        
+        if total_duration is not None:
+            print(f"Total duration: {total_duration / 1e9:.2f} seconds")
+        if eval_duration is not None and completion_tokens is not None and eval_duration > 0:
+            tokens_per_second = (completion_tokens / (eval_duration / 1e9))
+            print(f"Response speed: {tokens_per_second:.2f} tokens/second")
+
         return response.get('message', {}).get('content', "Sorry, I couldn't get a response from the model.")
+    
     except Exception as e:
         print(f"Error getting completion from Ollama: {e}")
         return "An error occurred while getting the model response."
@@ -82,9 +102,12 @@ async def main():
             user_query = input("\n[You] ")
             if user_query.lower() in ["exit", "quit"]:
                 break
-            answer = await process_input_with_retrieval(user_query)
-            print(Fore.BLUE + f"\n[Assistant] {answer}")
-            print(Style.RESET_ALL)
+
+            if len(user_query) > 0:
+                answer = await process_input_with_retrieval(user_query)
+                print(Fore.BLUE + f"\n[Assistant] {answer}")
+                print(Style.RESET_ALL)
+
         except (KeyboardInterrupt, EOFError):
             print("\nTask terminated by user.")
             break
