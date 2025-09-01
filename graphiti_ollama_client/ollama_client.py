@@ -152,7 +152,7 @@ class OllamaClient(LLMClient):
             "model": model_name,
             "messages": ollama_messages,
             "stream": False,
-            "format": "json",   # Ollama formats output as JSON
+            "format": "json",  
             "options": {
                 "temperature": self.temperature,
                 "num_predict": max_tokens or self.max_tokens,
