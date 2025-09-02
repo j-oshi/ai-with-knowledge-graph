@@ -23,7 +23,8 @@ def connect_pg():
         port=POSTGRES_PORT,
         dbname=POSTGRES_DBNAME,
         user=POSTGRES_USERNAME,
-        password=POSTGRES_PASSWORD
+        password=POSTGRES_PASSWORD,
+        client_encoding='UTF8'
     )
     return connect
 
@@ -50,6 +51,58 @@ def check_db_connection():
         if conn:
             conn.close()
 
+def install_vector_extension():
+    try:
+        conn = connect_pg()
+        cursor = conn.cursor()
+
+        #install pgvector
+        cursor.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+        conn.commit()
+
+        #install pgvectorscale
+        cursor.execute("CREATE EXTENSION IF NOT EXISTS vectorscale CASCADE;")
+        conn.commit()
+    except psycopg2.Error as e:
+        if conn:
+            conn.rollback()
+        print(f"Database error occurred: {e}")
+
+def create_index():
+    try:
+        conn = connect_pg()
+        cursor = conn.cursor()
+
+        cursor.execute('CREATE INDEX embedding_idx ON embeddings_table USING diskann (embedding_column);')
+        conn.commit()
+    except psycopg2.Error as e:
+        if conn:
+            conn.rollback()
+        print(f"Database error occurred: {e}")
+
+def create_embedding_table():
+    try:
+        conn = connect_pg()
+        cursor = conn.cursor()
+
+        # Create table to store embeddings and metadata
+        table_create_command = """
+            CREATE TABLE embeddings_table (
+                id SERIAL PRIMARY KEY,
+                text_column TEXT,
+                doc_name_column VARCHAR(255),
+                doc_index_column INTEGER,
+                embedding_column VECTOR(768)
+            );
+        """
+
+        cursor.execute(table_create_command)
+        cursor.close()
+        conn.commit()
+    except psycopg2.Error as e:
+        if conn:
+            conn.rollback()
+        print(f"Database error occurred: {e}")
 
 def insert_embeddings_to_db(data, table_name="embeddings_table"):
     try:
